@@ -65,12 +65,6 @@ The buttons sit above the picker. Hover over one to see what it does. The shortc
 
 The settings are saved in `~/.local/state/clawd/window`.
 
-### Easter egg
-
-Press `Ctrl+Alt+J` in the picker to open Clawd's secret stash: browse every quote and preview every animation. `Esc` takes you back.
-
-![Clawd's secret stash previewing the think animation](docs/screenshots/gallery.png)
-
 ### Shortcut
 
 To change the show/hide shortcut, right-click Clawd → *Configure Clawd…* → *Keyboard Shortcuts*.
@@ -90,7 +84,7 @@ Re-run `./install.sh` after editing. Use `kscreen-doctor -o` to list your monito
 | Part | Role |
 |---|---|
 | `package/` | The plasmoid: the QML Clawd plus the helper scripts in `contents/bin` |
-| `clawd-picker` | Directory picker, animated header and gallery (Python, runs inside kitty) |
+| `clawd-picker` | Directory picker and animated header (Python, runs inside kitty) |
 | `clawd-toggle` | Starts the kitty window (`--class clawd`), or asks KWin to show or hide it |
 | `clawd-window` | Saves pin/position/size and pushes them to KWin through keyless shortcuts |
 | `clawd-hook` / `clawd-status` | Claude Code hooks write each session's state to `~/.cache/clawd/`; the widget polls it to know when to run |
