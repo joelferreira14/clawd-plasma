@@ -8,6 +8,7 @@ PlasmoidItem {
     id: root
 
     readonly property string bin: Qt.resolvedUrl("../bin/").toString().replace("file://", "")
+    readonly property string statusCommand: "'" + bin + "clawd-status'"
     property bool working: false
 
     preferredRepresentation: fullRepresentation
@@ -18,7 +19,7 @@ PlasmoidItem {
         id: exec
         engine: "executable"
         onNewData: (source, data) => {
-            if (source.endsWith("clawd-status")) {
+            if (source === root.statusCommand) {
                 root.working = data.stdout.trim() === "working"
             }
             disconnectSource(source)
@@ -38,7 +39,7 @@ PlasmoidItem {
         running: true
         repeat: true
         triggeredOnStart: true
-        onTriggered: exec.connectSource("'" + root.bin + "clawd-status'")
+        onTriggered: exec.connectSource(root.statusCommand)
     }
 
     fullRepresentation: MouseArea {
