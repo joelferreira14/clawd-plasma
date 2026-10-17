@@ -6,6 +6,12 @@ A [Claude Code](https://claude.com/claude-code) companion for KDE Plasma 6.
 - **Drop-down terminal**: click Clawd (or press ``Meta+` ``) to open a kitty window with a directory picker that starts `claude` or `claude --resume` where you choose.
 - **Animated header**: Clawd plays 21 animations next to 200+ geeky quotes about coding, AI and tech.
 
+![Directory picker with the animated Clawd header](docs/screenshots/picker.png)
+
+| Idle (blinks every 10 s) | Claude is working |
+|:---:|:---:|
+| ![Clawd idle in the panel](docs/screenshots/clawd-idle.gif) | ![Clawd running in the panel](docs/screenshots/clawd-running.gif) |
+
 ## Requirements
 
 - KDE Plasma 6 on Wayland (KWin)
@@ -49,6 +55,8 @@ The five most recent directories are listed at the top. `●` marks directories 
 
 The buttons sit above the picker. Hover over one to see what it does. The shortcuts also work while `claude` is running.
 
+![Hovering a window button shows its tooltip](docs/screenshots/tooltip.png)
+
 | Button | Shortcut | Action |
 |---|---|---|
 | `⊙ Pin` | `Ctrl+Alt+P` | Keep the window open when it loses focus |
@@ -60,6 +68,8 @@ The settings are saved in `~/.local/state/clawd/window`.
 ### Easter egg
 
 Press `Ctrl+Alt+J` in the picker to open Clawd's secret stash: browse every quote and preview every animation. `Esc` takes you back.
+
+![Clawd's secret stash previewing the think animation](docs/screenshots/gallery.png)
 
 ### Shortcut
 
