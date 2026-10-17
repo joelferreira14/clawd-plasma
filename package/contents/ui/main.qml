@@ -43,14 +43,14 @@ PlasmoidItem {
     }
 
     fullRepresentation: MouseArea {
-        Layout.minimumWidth: height * 1.4
-        Layout.preferredWidth: height * 1.4
+        Layout.minimumWidth: height * 1.8
+        Layout.preferredWidth: height * 1.8
         hoverEnabled: true
         onClicked: exec.connectSource("'" + root.bin + "clawd-toggle'")
 
         Clawd {
             anchors.fill: parent
-            anchors.margins: parent.height * 0.18
+            anchors.margins: parent.height * 0.06
             working: root.working
             color: Kirigami.Theme.textColor
         }
