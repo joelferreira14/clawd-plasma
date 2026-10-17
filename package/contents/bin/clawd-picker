@@ -1,0 +1,758 @@
+#!/usr/bin/env python3
+"""Directory picker that launches Claude Code.
+
+Keys:  Up/Down move  ->  expand / enter  <-  collapse / back
+       Enter  claude --resume      Ctrl+Enter  claude (new session)
+       .  toggle hidden dirs       Esc  hide the drop-down
+"""
+import os
+import random
+import re
+import select
+import shutil
+import signal
+import subprocess
+import sys
+import termios
+import tty
+
+HOME = os.path.expanduser("~")
+STATE_DIR = os.path.join(os.environ.get("XDG_STATE_HOME", os.path.join(HOME, ".local/state")), "clawd")
+RECENT_FILE = os.path.join(STATE_DIR, "recent")
+PROJECTS_DIR = os.path.join(HOME, ".claude/projects")
+TOGGLE = os.path.join(os.path.dirname(os.path.realpath(__file__)), "clawd-toggle")
+MAX_RECENT = 5
+
+ORANGE = "\x1b[38;2;217;119;87m"
+DIM = "\x1b[2m"
+BOLD = "\x1b[1m"
+REV = "\x1b[7m"
+RESET = "\x1b[0m"
+
+
+def tilde(path):
+    return "~" + path[len(HOME):] if path == HOME or path.startswith(HOME + "/") else path
+
+
+def has_sessions(path):
+    """Claude stores sessions under ~/.claude/projects/<path with non-alnum as '-'>."""
+    d = os.path.join(PROJECTS_DIR, re.sub(r"[^A-Za-z0-9]", "-", path))
+    try:
+        return any(name.endswith(".jsonl") for name in os.listdir(d))
+    except OSError:
+        return False
+
+
+def load_recent():
+    try:
+        with open(RECENT_FILE) as f:
+            paths = [line.strip() for line in f if line.strip()]
+    except OSError:
+        return []
+    return [p for p in paths if os.path.isdir(p)][:MAX_RECENT]
+
+
+def save_recent(path):
+    paths = [path] + [p for p in load_recent() if p != path]
+    os.makedirs(STATE_DIR, exist_ok=True)
+    with open(RECENT_FILE, "w") as f:
+        f.write("\n".join(paths[:MAX_RECENT]) + "\n")
+
+
+class Node:
+    def __init__(self, path, depth, parent=None, label=None):
+        self.path = path
+        self.depth = depth
+        self.parent = parent
+        self.label = label or os.path.basename(path)
+        self.expanded = False
+        self.children = None
+        self.sessions = has_sessions(path)
+
+    def load(self, show_hidden):
+        try:
+            names = sorted(
+                (e.name for e in os.scandir(self.path) if e.is_dir(follow_symlinks=True)),
+                key=str.lower,
+            )
+        except OSError:
+            names = []
+        if not show_hidden:
+            names = [n for n in names if not n.startswith(".")]
+        self.children = [Node(os.path.join(self.path, n), self.depth + 1, self) for n in names]
+
+
+# --- Animated header -------------------------------------------------------
+# Clawd is drawn from three 9-column rows of half-block characters; each frame
+# picks eyes / body / legs variants, an offset and optional effects above.
+
+EYES = {
+    "open": " ▐▛███▜▌ ",
+    "closed": " ▐█████▌ ",
+    "left": " ▐▜███▜▌ ",
+    "right": " ▐▛███▛▌ ",
+    "happy": " ▐▀███▀▌ ",
+    "up": " ▐▟███▙▌ ",
+    "wink": " ▐▛████▌ ",
+}
+BODY = {
+    "arms": "▝▜█████▛▘",
+    "noarms": " ▜█████▛ ",
+    "wave": "▝▜█████▛ ",
+    "typeA": "▗▜█████▛▘",
+    "typeB": "▝▜█████▛▖",
+}
+LEGS = {
+    "stand": "  ▘▘ ▝▝  ",
+    "walkA": "  ▝▘ ▝▘  ",
+    "walkB": "  ▘▝ ▘▝  ",
+    "tuck": "  ▝▝ ▘▘  ",
+}
+SPRITE_COLS = 22
+QUOTES_FILE = os.path.join(os.path.dirname(os.path.realpath(__file__)), "quotes.txt")
+QUOTE_STYLE = "\x1b[3m"
+WINDOW = os.path.join(os.path.dirname(os.path.realpath(__file__)), "clawd-window")
+SIZE_NAMES = "SML"
+POSITION_NAMES = ["Center", "Left", "Right"]
+POSITION_ICONS = "▣◧◨"
+TOOLTIPS = {
+    "pin": ("Keep open when it loses focus", "Ctrl+Alt+P"),
+    "position": ("Cycle Center / Left / Right", "Ctrl+Alt+D"),
+    "size": ("Cycle Small / Medium / Large", "Ctrl+Alt+S"),
+}
+
+
+def window_state():
+    """(pinned, position index, size index) as stored by clawd-window."""
+    try:
+        out = subprocess.run([WINDOW, "state"], capture_output=True, text=True).stdout.split()
+        return bool(int(out[0])), int(out[1]) % 3, int(out[2]) % 3
+    except (OSError, ValueError, IndexError):
+        return False, 0, 1
+
+
+MOUSE_RE = re.compile(r"\x1b\[<(\d+);(\d+);(\d+)M")
+
+
+def frame(eyes="open", body="arms", legs="stand", up="", dx=0, dy=0, fx=(), t=1, rows=None):
+    """One animation frame. `up` raises arms ("L", "R"); fx are (row, col, text).
+    `rows` replaces the sprite outright (three 9-column strings)."""
+    l1 = list(EYES[eyes])
+    if "L" in up:
+        l1[0] = "▗"
+    if "R" in up:
+        l1[8] = "▖"
+    rows = rows or ["".join(l1), BODY[body], LEGS[legs]]
+    return {"rows": rows, "dx": dx, "dy": dy, "fx": fx, "t": t}
+
+
+def anim_blink():
+    return [frame("closed", t=2), frame(t=1)]
+
+
+def anim_look():
+    return [frame("left", t=8), frame(t=3), frame("right", t=8), frame(t=3)]
+
+
+def anim_walk():
+    path = list(range(0, 9)) + list(range(8, -1, -1))
+    return [frame(legs="walkA" if i % 2 else "walkB", dx=x, t=2) for i, x in enumerate(path)] + [frame()]
+
+
+def anim_jump():
+    hop = [frame(legs="tuck", t=2), frame("happy", "noarms", "tuck", up="LR", dy=-1, t=3), frame(t=2)]
+    return hop * 3
+
+
+def anim_wave():
+    return [frame("happy", "wave", up="R", t=3), frame("happy", t=3)] * 4 + [frame()]
+
+
+def anim_sleep():
+    zs = ["z", "z Z", "z Z z", " Z z", "  z", ""]
+    return [frame("closed", fx=[(0, 9, zs[i % len(zs)])], t=4) for i in range(18)] + [frame("up", t=3), frame()]
+
+
+def anim_dance():
+    notes = [[(0, 0, "♪")], [(0, 8, "♫")]]
+    return [
+        frame("happy", "noarms" if i % 2 else "arms", "walkA" if i % 2 else "walkB",
+              up="L" if i % 2 else "R", dx=1 + (i % 2), fx=notes[i % 2], t=3)
+        for i in range(12)
+    ] + [frame()]
+
+
+def anim_idea():
+    return [frame("up", t=4), frame("up", fx=[(0, 4, "✦")], t=4), frame("up", up="LR", fx=[(0, 4, "!")], t=8),
+            frame("happy", t=4), frame()]
+
+
+def anim_type():
+    bits = ["01", "10", "11", "00", "{}", "</>", ";"]
+    return [
+        frame("open" if i % 6 else "closed", "typeA" if i % 2 else "typeB",
+              fx=[(0, 2 + (i * 3) % 6, random.choice(bits))], t=2)
+        for i in range(24)
+    ] + [frame()]
+
+
+def anim_love():
+    hearts = ["♥", " ♥", "♥ ♥", " ♥ ♥", "  ♥", ""]
+    return [frame("happy", fx=[(0, 2, hearts[i])], t=4) for i in range(len(hearts))] + [frame()]
+
+
+def anim_confused():
+    return [frame("left", t=3), frame("right", t=3), frame("left", fx=[(0, 4, "?")], t=4),
+            frame("right", fx=[(0, 4, "?")], t=4), frame("up", fx=[(0, 3, "? ?")], t=8), frame()]
+
+
+def anim_coffee():
+    steam = ["~", " ~", "~ ", " ~"]
+    sip = [frame("open", "noarms", fx=[(2, 9, "c[_]"), (1, 10, steam[i % 4])], t=4) for i in range(6)]
+    gulp = [frame("closed", "noarms", fx=[(2, 9, "c[_]"), (0, 4, "ahh")], t=6), frame("happy", t=4), frame()]
+    return sip + gulp
+
+
+def anim_bug_hunt():
+    # A bug scuttles off to the right; Clawd chases, catches it, celebrates.
+    chase = [frame("right", legs="walkA" if i % 2 else "walkB", dx=i // 2,
+                   fx=[(3, 10 + i, "ж")], t=2) for i in range(8)]
+    return chase + [frame("happy", up="LR", dx=4, fx=[(0, 4, "gotcha!")], t=10), frame(dx=2, t=2), frame()]
+
+
+def anim_glitch():
+    noise = "▓▒░█▚▞▙▟"
+    junk = lambda: ["".join(random.choice(noise + "   ") for _ in range(9)) for _ in range(3)]
+    return [frame(rows=junk(), dx=random.choice((0, 1)), t=1) for _ in range(6)] + \
+           [frame(fx=[(0, 2, "rebooted")], t=8), frame()]
+
+
+def anim_compile():
+    bars = ["[    ]", "[■   ]", "[■■  ]", "[■■■ ]", "[■■■■]"]
+    return [frame("up", "typeA" if i % 2 else "typeB", fx=[(0, 1, bars[i])], t=5) for i in range(len(bars))] + \
+           [frame("happy", up="LR", fx=[(0, 2, "✓ build ok")], t=10), frame()]
+
+
+def anim_think():
+    bubbles = ["o", "o O", "o O ( )", "o O (…)", "o O (!)"]
+    return [frame("up", fx=[(0, 6, b)], t=6) for b in bubbles] + [frame("happy", t=4), frame()]
+
+
+def anim_wink():
+    return [frame("wink", fx=[(0, 7, "✧")], t=6), frame("happy", t=4), frame()]
+
+
+def anim_stretch():
+    return [frame("closed", "noarms", up="LR", legs="tuck", fx=[(0, 3, "~")], t=8),
+            frame("closed", "noarms", up="LR", fx=[(0, 3, "~ ~")], t=8),
+            frame("open", t=3), frame("happy", t=4), frame()]
+
+
+def anim_git_push():
+    arrows = ["↑", " ↑", "  ↑", "↑ ↑", "push"]
+    return [frame("up", up="R" if i % 2 else "", fx=[(0, 2, a)], t=4) for i, a in enumerate(arrows)] + \
+           [frame("happy", up="LR", fx=[(0, 1, "pushed ✓")], t=10), frame()]
+
+
+def anim_duck():
+    # Ducks below the line, peeks around, pops back up.
+    return [frame(dy=1, t=6), frame("left", dy=1, fx=[(1, 0, "?")], t=6), frame("right", dy=1, t=6),
+            frame("happy", dy=0, fx=[(0, 3, "boo!")], t=8), frame()]
+
+
+def anim_moonwalk():
+    out = [frame("right", legs="walkA" if i % 2 else "walkB", dx=i, t=2) for i in range(7)]
+    back = [frame("right", legs="walkB" if i % 2 else "walkA", dx=6 - i,
+                  fx=[(0, 8, "♪" if i % 2 else "♫")], t=3) for i in range(7)]
+    return out + back + [frame("happy", up="R", fx=[(0, 3, "hee-hee")], t=8), frame()]
+
+
+def anim_sneeze():
+    return [frame("up", fx=[(0, 3, "a-")], t=5), frame("up", fx=[(0, 3, "a-a-")], t=5),
+            frame("closed", "noarms", up="LR", fx=[(0, 1, "ACHOO!")], dx=1, t=3), frame("closed", dx=0, t=2),
+            frame("closed", dx=1, t=2), frame("open", t=4), frame("happy", fx=[(0, 3, "sorry")], t=6), frame()]
+
+
+ANIMATIONS = [anim_look, anim_walk, anim_jump, anim_wave, anim_sleep,
+              anim_dance, anim_idea, anim_type, anim_love, anim_confused,
+              anim_coffee, anim_bug_hunt, anim_glitch, anim_compile, anim_think,
+              anim_wink, anim_stretch, anim_git_push, anim_duck, anim_moonwalk, anim_sneeze]
+
+
+def load_quotes():
+    try:
+        with open(QUOTES_FILE) as f:
+            quotes = [line.strip() for line in f if line.strip()]
+    except OSError:
+        quotes = []
+    return quotes or ["Hello, World!"]
+
+
+def wrap(text, width, rows):
+    """Greedy word wrap into at most `rows` lines."""
+    out, line = [], ""
+    for word in text.split():
+        if line and len(line) + 1 + len(word) > width:
+            out.append(line)
+            line = word
+        else:
+            line = f"{line} {word}" if line else word
+    out.append(line)
+    return [l[:width] for l in out[:rows]]
+
+
+class Header:
+    """Animated Clawd plus a typewriter quote; advanced by tick() every 100 ms."""
+
+    ROWS = 4
+
+    def __init__(self, auto=True):
+        # auto=False (gallery preview): no random animations or quote rotation.
+        self.auto = auto
+        self.quotes = load_quotes()
+        self.bag = []
+        self.queue = []
+        self.current = frame()
+        self.left = 0
+        self.idle = 20
+        self.buttons = []
+        self.hover = None
+        self.ticks = 0
+        self.window = window_state()
+        self.next_quote()
+
+    def next_quote(self):
+        if not self.bag:
+            self.bag = random.sample(self.quotes, len(self.quotes))
+        self.quote = self.bag.pop()
+        self.typed = 0
+        self.hold = 140
+
+    def tick(self):
+        self.ticks += 1
+        if self.ticks % 10 == 0:
+            self.window = window_state()
+        if self.typed < len(self.quote):
+            self.typed += 2
+        else:
+            self.hold -= 1
+            if self.hold <= 0 and self.auto:
+                self.next_quote()
+
+        if self.left > 1:
+            self.left -= 1
+            return
+        if not self.queue:
+            if self.idle > 0 or not self.auto:
+                self.idle -= 1
+                self.queue = anim_blink() if random.random() < 0.025 else [frame()]
+            else:
+                self.queue = random.choice(ANIMATIONS)()
+                self.idle = random.randint(30, 70)
+        self.current = self.queue.pop(0)
+        self.left = self.current["t"]
+
+    def render_buttons(self):
+        """Clickable window buttons; records their 1-based column ranges."""
+        pinned, position, size = self.window
+        specs = [
+            ("pin", "⊙ Pin", pinned),
+            ("position", f"{POSITION_ICONS[position]} {POSITION_NAMES[position]}", False),
+            ("size", f"⤢ Size {SIZE_NAMES[size]}", False),
+        ]
+        col = SPRITE_COLS + 1
+        out, self.buttons = "", []
+        for action, label, active in specs:
+            text = f" {label} "
+            if active:
+                out += f"{ORANGE}[{REV}{text}{RESET}{ORANGE}]{RESET} "
+            else:
+                out += f"{DIM}[{RESET}{text}{DIM}]{RESET} "
+            width = len(text) + 2
+            self.buttons.append((col, col + width - 1, action))
+            col += width + 1
+        return out + f"{DIM}{RESET}"
+
+    def tooltip(self, cols):
+        """Hovered button's tooltip as a box drawn over the rows below it."""
+        button = next((b for b in self.buttons if b[2] == self.hover), None)
+        if not button:
+            return ""
+        lines = TOOLTIPS[self.hover]
+        width = min(max(map(len, lines)) + 4, cols)
+        inner = width - 4
+        col = max(1, min(button[0], cols - width + 1))
+        fit = lambda t: t if len(t) <= inner else t[: max(0, inner - 1)] + "…"
+        box = [f"{ORANGE}╭{'─' * (width - 2)}╮{RESET}"]
+        box.append(f"{ORANGE}│{RESET} {fit(lines[0]):<{inner}} {ORANGE}│{RESET}")
+        box.append(f"{ORANGE}│{RESET} {DIM}{fit(lines[1]):<{inner}}{RESET} {ORANGE}│{RESET}")
+        box.append(f"{ORANGE}╰{'─' * (width - 2)}╯{RESET}")
+        return "".join(f"\x1b[{2 + i};{col}H{line}" for i, line in enumerate(box))
+
+    def render(self, cols, path, title=None):
+        canvas = [[(" ", False)] * SPRITE_COLS for _ in range(self.ROWS)]
+        f = self.current
+        base = 2 + f["dx"]
+
+        def put(row, col, text, is_fx):
+            if 0 <= row < self.ROWS:
+                for i, ch in enumerate(text):
+                    if 0 <= col + i < SPRITE_COLS and (is_fx or ch != " "):
+                        canvas[row][col + i] = (ch, is_fx)
+
+        for r, text in enumerate(f["rows"]):
+            put(1 + f["dy"] + r, base, text, False)
+        for r, c, text in f["fx"]:
+            put(r, base + c, text, True)
+
+        width = max(10, cols - SPRITE_COLS - 2)
+        quote = wrap("“" + self.quote[: self.typed] + ("▌" if self.typed < len(self.quote) else "”"), width, 2)
+        if title:
+            side = ["", f"{BOLD}{title}{RESET}"]
+        else:
+            side = [self.render_buttons(), f"{BOLD}Claude{RESET}  {DIM}{tilde(path)}{RESET}"]
+        side += [f"{QUOTE_STYLE}{q}{RESET}" for q in quote]
+
+        lines = []
+        for r, row in enumerate(canvas):
+            text, mode = "", None
+            for ch, is_fx in row:
+                if is_fx != mode:
+                    text += RESET if is_fx else ORANGE
+                    mode = is_fx
+                text += ch
+            lines.append(f"{text}{RESET}{side[r] if r < len(side) else ''}")
+        return lines
+
+
+def window_action(header, action):
+    subprocess.run([WINDOW, action], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    header.window = window_state()
+
+
+class Gallery:
+    """Ctrl+Alt+J easter egg: browse every quote and preview every animation."""
+
+    def __init__(self):
+        self.header = Header(auto=False)
+        self.header.quote, self.header.typed = "Psst… you found Clawd's secret stash.", 0
+        anims = [(a.__name__.removeprefix("anim_"), a) for a in ANIMATIONS]
+        quotes = [(q, q) for q in self.header.quotes]
+        self.rows = ([(f"Animations ({len(anims)})", None)] + anims +
+                     [("", None), (f"Quotes ({len(quotes)})", None)] + quotes)
+        self.items = [i for i, (_, v) in enumerate(self.rows) if v is not None]
+        self.cursor = 0
+        self.top = 0
+
+    def key(self, k):
+        """Returns True when the gallery should close."""
+        moves = {"up": -1, "k": -1, "down": 1, "j": 1, "pgup": -10, "pgdn": 10,
+                 "home": -len(self.items), "end": len(self.items)}
+        if k == "esc":
+            return True
+        if k in moves:
+            self.cursor = max(0, min(self.cursor + moves[k], len(self.items) - 1))
+        elif k == "enter":
+            value = self.rows[self.items[self.cursor]][1]
+            if callable(value):
+                self.header.queue, self.header.left = value(), 0
+            else:
+                self.header.quote, self.header.typed, self.header.hold = value, 0, 0
+        return False
+
+    def title(self):
+        return f"Clawd's secret stash  {DIM}{self.cursor + 1}/{len(self.items)}{RESET}"
+
+    def draw_header(self):
+        cols, _ = shutil.get_terminal_size()
+        out = "".join(line + "\x1b[K\r\n" for line in self.header.render(cols, HOME, self.title()))
+        sys.stdout.write("\x1b[H" + out)
+        sys.stdout.flush()
+
+    def draw(self):
+        cols, lines = shutil.get_terminal_size()
+        body = lines - Header.ROWS - 2
+        row = self.items[self.cursor]
+        if row < self.top:
+            self.top = row
+        elif row >= self.top + body:
+            self.top = row - body + 1
+        self.top = max(0, min(self.top, row))
+        out = [line + "\x1b[K\r\n" for line in self.header.render(cols, HOME, self.title())] + ["\x1b[K\r\n"]
+        for i, (label, value) in enumerate(self.rows[self.top:self.top + body], self.top):
+            if value is None:
+                out.append(f"{ORANGE}{BOLD} {label}{RESET}\x1b[K\r\n" if label else "\x1b[K\r\n")
+                continue
+            text = f"  {label}"[: cols - 2]
+            out.append((f" {REV}{text}{RESET}" if i == row else f" {text}") + "\x1b[K\r\n")
+        out.append(f"\x1b[J\x1b[{lines};1H{DIM} ↑↓ browse  ⏎ preview  Esc back{RESET}")
+        sys.stdout.write("\x1b[H" + "".join(out))
+        sys.stdout.flush()
+
+
+class Picker:
+    def __init__(self):
+        self.show_hidden = False
+        self.gallery = None
+        self.header = Header()
+        self.reset()
+
+    def reset(self):
+        self.recent = [Node(p, 0, label=tilde(p)) for p in load_recent()]
+        self.home = Node(HOME, 0, label="~")
+        self.expand(self.home)
+        self.cursor = 0
+        self.top = 0
+
+    def expand(self, node):
+        if node.children is None:
+            node.load(self.show_hidden)
+        node.expanded = True
+
+    def rows(self):
+        """Flattened visible rows: (node or None for a section header, header text)."""
+        out = []
+
+        def walk(node):
+            out.append((node, None))
+            if node.expanded:
+                for child in node.children:
+                    walk(child)
+
+        if self.recent:
+            out.append((None, "Recent"))
+            for node in self.recent:
+                walk(node)
+            out.append((None, ""))
+        out.append((None, "Directories"))
+        walk(self.home)
+        return out
+
+    def selectable(self):
+        return [node for node, _ in self.rows() if node is not None]
+
+    def tick(self):
+        (self.gallery.header if self.gallery else self.header).tick()
+
+    def draw_header(self):
+        """Animation tick: repaint only the header rows."""
+        if self.gallery:
+            return self.gallery.draw_header()
+        cols, _ = shutil.get_terminal_size()
+        current = self.selectable()[self.cursor]
+        out = "".join(line + "\x1b[K\r\n" for line in self.header.render(cols, current.path))
+        # The tooltip box reaches into the blank row under the header; repaint it too.
+        sys.stdout.write("\x1b[H" + out + "\x1b[K" + self.header.tooltip(cols))
+        sys.stdout.flush()
+
+    def draw(self):
+        if self.gallery:
+            return self.gallery.draw()
+        cols, lines = shutil.get_terminal_size()
+        rows = self.rows()
+        nodes = [n for n, _ in rows if n is not None]
+        self.cursor = max(0, min(self.cursor, len(nodes) - 1))
+        current = nodes[self.cursor]
+        cur_row = next(i for i, (n, _) in enumerate(rows) if n is current)
+
+        body = lines - Header.ROWS - 2
+        if cur_row < self.top:
+            self.top = cur_row
+        elif cur_row >= self.top + body:
+            self.top = cur_row - body + 1
+
+        # Redraw in place (erase to end of line) rather than clearing, so the
+        # 100 ms animation ticks don't flicker.
+        out = [line + "\x1b[K\r\n" for line in self.header.render(cols, current.path)] + ["\x1b[K\r\n"]
+        for node, header in rows[self.top:self.top + body]:
+            if node is None:
+                out.append(f"{ORANGE}{BOLD} {header}{RESET}\x1b[K\r\n" if header else "\x1b[K\r\n")
+                continue
+            if node.children is not None and not node.children:
+                arrow = " "
+            else:
+                arrow = "▾" if node.expanded else "▸"
+            dot = f"{ORANGE}●{RESET}" if node.sessions else " "
+            text = f"{'  ' * node.depth}{arrow} {node.label}"[: cols - 6]
+            if node is current:
+                out.append(f" {dot} {REV}{text}{RESET}\x1b[K\r\n")
+            else:
+                out.append(f" {dot} {text}\x1b[K\r\n")
+        out.append(
+            f"\x1b[J\x1b[{lines};1H{DIM} → open  ← back  ⏎ --resume  Ctrl+⏎ new  . hidden  Esc hide  "
+            f"● has sessions{RESET}"
+        )
+        out.append(self.header.tooltip(cols))
+        sys.stdout.write("\x1b[H" + "".join(out))
+        sys.stdout.flush()
+
+    def key(self, k):
+        if self.gallery:
+            if self.gallery.key(k):
+                self.gallery = None
+            return None
+        if k == "ctrl+alt+j":
+            self.gallery = Gallery()
+            return None
+        nodes = self.selectable()
+        node = nodes[self.cursor]
+        if k in ("up", "k"):
+            self.cursor -= 1
+        elif k in ("down", "j"):
+            self.cursor += 1
+        elif k == "pgup":
+            self.cursor -= 10
+        elif k == "pgdn":
+            self.cursor += 10
+        elif k == "home":
+            self.cursor = 0
+        elif k == "end":
+            self.cursor = len(nodes) - 1
+        elif k in ("right", "l"):
+            if not node.expanded:
+                self.expand(node)
+            elif node.children:
+                self.cursor += 1
+        elif k in ("left", "h"):
+            if node.expanded and node is not self.home:
+                node.expanded = False
+            elif node.parent is not None:
+                self.cursor = self.selectable().index(node.parent)
+        elif k == ".":
+            self.show_hidden = not self.show_hidden
+            path = node.path
+            self.reset()
+            self.reveal(path)
+        elif k == "enter":
+            return ["--resume"] if node.sessions else []
+        elif k == "ctrl+enter":
+            return []
+        elif k.startswith("\x1b[<"):
+            self.mouse(k)
+        elif k == "esc":
+            subprocess.Popen([TOGGLE], start_new_session=True)
+        self.cursor = max(0, min(self.cursor, len(self.selectable()) - 1))
+        return None
+
+    def mouse(self, data):
+        """SGR mouse events: hover shows a button's tooltip, a left press runs it."""
+        for button, col, row in MOUSE_RE.findall(data):
+            hit = next((a for start, end, a in self.header.buttons
+                        if row == "1" and start <= int(col) <= end), None)
+            self.header.hover = hit
+            if button == "0" and hit:
+                window_action(self.header, hit)
+
+    def reveal(self, path):
+        """Expand the home tree down to path and put the cursor on it."""
+        node = self.home
+        while node.path != path:
+            self.expand(node)
+            nxt = next((c for c in node.children if path == c.path or path.startswith(c.path + "/")), None)
+            if nxt is None:
+                break
+            node = nxt
+        nodes = self.selectable()
+        # Prefer the tree copy over the recent-list copy.
+        self.cursor = len(nodes) - 1 - nodes[::-1].index(node) if node in nodes else 0
+
+
+KEYS = {
+    "\x1b[A": "up", "\x1b[B": "down", "\x1b[C": "right", "\x1b[D": "left",
+    "\x1b[H": "home", "\x1b[F": "end", "\x1b[5~": "pgup", "\x1b[6~": "pgdn",
+    "\r": "enter", "\x1b[13;5u": "ctrl+enter", "\x1b[27u": "esc", "\x1b": "esc",
+    "\x1b[106;7u": "ctrl+alt+j",
+}
+
+
+class Resize(Exception):
+    pass
+
+
+READING = False
+
+
+# One key per match: escape sequences (CSI incl. SGR mouse, SS3), a lone ESC,
+# or a single character. Held keys and fast typing arrive batched in one read.
+KEY_RE = re.compile(r"\x1b\[[0-9;?<>]*[A-Za-z~]|\x1bO.|\x1b|.", re.S)
+
+
+def read_keys(fd, timeout):
+    """Keys that arrived within `timeout` seconds (empty list if none)."""
+    global READING
+    READING = True
+    try:
+        if not select.select([fd], [], [], timeout)[0]:
+            return []
+        data = os.read(fd, 4096).decode(errors="ignore")
+    finally:
+        READING = False
+    return [KEYS.get(k, k) for k in KEY_RE.findall(data)]
+
+
+def run_claude(path, args):
+    save_recent(path)
+    claude = shutil.which("claude") or os.path.join(HOME, ".local/bin/claude")
+    sys.stdout.write("\x1b[H\x1b[2J")
+    sys.stdout.flush()
+    # Let claude own Ctrl+C while it runs; the picker ignores it meanwhile.
+    old = signal.signal(signal.SIGINT, signal.SIG_IGN)
+    try:
+        subprocess.run([claude, *args], cwd=path, preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_DFL))
+    finally:
+        signal.signal(signal.SIGINT, old)
+
+
+def main():
+    fd = sys.stdin.fileno()
+    picker = Picker()
+    while True:
+        saved = termios.tcgetattr(fd)
+        # Hidden cursor, alt screen, kitty keyboard protocol (disambiguate) so
+        # Ctrl+Enter arrives as CSI 13;5u instead of a plain CR.
+        sys.stdout.write("\x1b[?1049h\x1b[?25l\x1b[>1u\x1b[?1003h\x1b[?1006h")
+        try:
+            tty.setraw(fd)
+            choice = None
+            dirty = True
+            while choice is None:
+                if dirty:
+                    picker.draw()
+                else:
+                    picker.draw_header()
+                dirty = True
+                try:
+                    keys = read_keys(fd, 0.1)
+                except Resize:
+                    sys.stdout.write("\x1b[2J")
+                    continue
+                if not keys:
+                    picker.tick()
+                # Mouse only touches the header (buttons and their tooltips), so a
+                # batch of mouse events needs just a header repaint.
+                dirty = any(not k.startswith("\x1b[<") for k in keys)
+                for k in keys:
+                    if k.startswith("\x1b[<"):
+                        if not picker.gallery:
+                            picker.mouse(k)
+                    else:
+                        choice = picker.key(k)
+                        if choice is not None:
+                            break
+            path = picker.selectable()[picker.cursor].path
+        finally:
+            sys.stdout.write("\x1b[?1006l\x1b[?1003l\x1b[<u\x1b[?25h\x1b[?1049l")
+            sys.stdout.flush()
+            termios.tcsetattr(fd, termios.TCSADRAIN, saved)
+        run_claude(path, choice)
+        picker.reset()
+
+
+if __name__ == "__main__":
+    def on_resize(*_):
+        # Only interrupt the blocking read; a redraw follows.
+        if READING:
+            raise Resize
+
+    signal.signal(signal.SIGWINCH, on_resize)
+    main()

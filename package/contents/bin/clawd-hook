@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Claude Code hook: records whether this session is working or idle.
+# Usage (from settings.json hooks): clawd-hook working|idle|end
+# Writes ~/.cache/clawd/<session_id> as "<state> <claude pid>"; clawd-status reads it.
+set -u
+
+state=${1:-idle}
+dir="${XDG_CACHE_HOME:-$HOME/.cache}/clawd"
+session=$(jq -r '.session_id // empty' 2>/dev/null)
+[[ -n $session ]] || exit 0
+
+if [[ $state == end ]]; then
+    rm -f "$dir/$session"
+    exit 0
+fi
+
+# Walk up to the claude process so clawd-status can drop sessions that died.
+pid=$PPID
+for _ in 1 2 3 4 5; do
+    [[ $(ps -o comm= -p "$pid" 2>/dev/null) == claude ]] && break
+    pid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
+    [[ -n $pid && $pid != 1 ]] || { pid=$PPID; break; }
+done
+
+mkdir -p "$dir"
+printf '%s %s\n' "$state" "$pid" > "$dir/$session"
+exit 0

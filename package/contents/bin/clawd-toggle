@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Shows or hides the Clawd window, starting it if needed. Placement, focus-loss
+# hiding and the show/hide itself are done by the Clawd KWin script.
+here=$(dirname "$(readlink -f "$0")")
+export PATH="$HOME/.local/bin:$PATH"
+
+"$here/clawd-window" sync
+
+if pgrep -f -- "--class clawd " >/dev/null; then
+    exec qdbus6 org.kde.kglobalaccel /component/kwin \
+        org.kde.kglobalaccel.Component.invokeShortcut "Clawd Toggle"
+fi
+
+bg="launch --type=background $here/clawd-window"
+exec kitty --detach --class clawd --title Claude \
+    -o background_opacity=0.95 \
+    -o window_padding_width=8 \
+    -o confirm_os_window_close=0 \
+    -o remember_window_size=no \
+    -o "map=ctrl+alt+p $bg pin" \
+    -o "map=ctrl+alt+d $bg position" \
+    -o "map=ctrl+alt+s $bg size" \
+    python3 -I "$here/clawd-picker"

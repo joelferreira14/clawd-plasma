@@ -1,0 +1,11 @@
+{
+  "KPackageStructure": "KWin/Script",
+  "KPlugin": {
+    "Description": "Places, shows and hides the Clawd Claude Code window",
+    "Icon": "utilities-terminal",
+    "Id": "clawd",
+    "License": "MIT",
+    "Name": "Clawd"
+  },
+  "X-Plasma-API": "javascript"
+}

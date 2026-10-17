@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Prints "working" if any live Claude session is mid-turn, else "idle".
+# Removes state files whose claude process is gone.
+dir="${XDG_CACHE_HOME:-$HOME/.cache}/clawd"
+result=idle
+shopt -s nullglob
+for f in "$dir"/*; do
+    read -r state pid < "$f" || continue
+    if ! kill -0 "$pid" 2>/dev/null; then
+        rm -f "$f"
+        continue
+    fi
+    [[ $state == working ]] && result=working
+done
+echo "$result"

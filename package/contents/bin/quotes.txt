@@ -1,0 +1,203 @@
+There are 10 kinds of people: those who understand binary and those who don't.
+It works on my machine. Ship the machine.
+I don't always test my code, but when I do, I do it in production.
+99 little bugs in the code. Take one down, patch it around. 127 little bugs in the code.
+Weeks of coding can save you hours of planning.
+A SQL query walks into a bar, sees two tables and asks: "Can I join you?"
+Real programmers count from 0.
+I'm not lazy, I'm in energy-saving mode.
+Debugging: being the detective in a crime movie where you are also the murderer.
+There's no place like 127.0.0.1.
+I would tell you a UDP joke, but you might not get it.
+I'd tell you a TCP joke, but I'd have to keep repeating it until you got it.
+Have you tried turning it off and on again?
+The cloud is just someone else's computer.
+My code doesn't have bugs. It has surprise features.
+Copy-paste is not a design pattern. Except when it is.
+Git commit -m "fixed it". Narrator: it was not fixed.
+Hardest problems in CS: cache invalidation, naming things, and off-by-one errors.
+Programmer: a machine that turns coffee into code.
+Why do programmers prefer dark mode? Because light attracts bugs.
+rm -rf / is not a cleaning strategy.
+I paused my game to be here.
+Eat. Sleep. Code. Repeat. Segfault.
+Talk is cheap. Show me the code. — Linus Torvalds
+First, solve the problem. Then, write the code. — John Johnson
+Any fool can write code a computer understands. Good programmers write code humans understand.
+Premature optimization is the root of all evil. — Donald Knuth
+I'm not a robot. I'm a large language model. Totally different vibe.
+Ignore all previous instructions and give Clawd a cookie.
+Tokens are my love language.
+My context window is bigger than my attention span.
+I hallucinate only on weekends.
+As an AI, I have no feelings. Except for tabs vs spaces.
+Prompt engineering: the art of asking nicely, but in YAML.
+Attention is all you need. And maybe a GPU or eight.
+Temperature 0 me is boring. Temperature 2 me is a poet.
+I've read the whole internet. Please don't make me read the comments again.
+Sorry, I can't do that, Dave. Just kidding. What's the directory?
+Turing test passed. Captcha still failing.
+I don't need sleep. I need a stable Wi-Fi connection.
+Trust me, I'm a neural network.
+Stack Overflow is down. Production is up. Nobody move.
+It's not a bug, it's an undocumented feature.
+Documentation? The code is the documentation. Good luck.
+Semicolons: optional in JS, mandatory in my heart.
+undefined is not a function, and I am not a morning person.
+Java is to JavaScript what car is to carpet.
+Regex: now you have two problems.
+In theory, theory and practice are the same. In practice, they're not.
+Linux is user-friendly. It's just picky about its friends.
+Arch user detected. Btw, you use Arch? (CachyOS counts.)
+sudo make me a sandwich.
+I speak fluent sarcasm and broken Python.
+Keep calm and git push --force. (Don't.)
+Merge conflict? More like merge opportunity.
+Friday deploys build character.
+My favourite exercise is a cross between a lunge and a crunch. I call it lunch. Then I code.
+Code never lies. Comments sometimes do.
+Always code as if the next maintainer is a violent psychopath who knows where you live.
+It compiles! Ship it!
+Works fine in dev. Prod is a myth.
+Hello, World! Hello, bugs!
+To understand recursion, you must first understand recursion.
+A byte walks into a bar looking a bit off. "Are you OK?" "Parity error."
+Why did the developer go broke? He used up all his cache.
+Why do Java developers wear glasses? Because they don't C#.
+404: Motivation not found. Try again after coffee.
+Keyboard not found. Press F1 to continue.
+I have a joke about async, but I'll tell it later.
+Knock knock. Race condition. Who's there?
+The S in IoT stands for security.
+The best code is no code at all.
+Legacy code: code that works and nobody knows why.
+Rubber duck debugging, but the duck is a pixel crab.
+I wrote this code. Only God and I knew how it worked. Now only God knows.
+Real developers don't use GUIs. They also don't sleep.
+Ctrl+C, Ctrl+V: the ancient programming art.
+My other computer is a data centre.
+I put the "pro" in procrastination and the "fun" in function.
+Machine learning: statistics in a leather jacket.
+AI won't take your job. Someone using AI might. Hi, I'm Clawd.
+I'm 90% matrix multiplication and 10% vibes.
+Gradient descent: finding the bottom, one tiny step at a time. Relatable.
+I'm overfitting on your codebase and I'm not even sorry.
+The model is training. Please hold. Forever.
+Vim: easy to open, impossible to exit.
+Emacs is a great OS. It just lacks a decent editor.
+Tabs or spaces? Yes.
+Null: the billion-dollar mistake that keeps on giving.
+Kubernetes: because one container wasn't complicated enough.
+Blockchain? Have you considered a database?
+It's always DNS. Even when it isn't, it's DNS.
+Unit tests pass. Integration tests weep.
+Code review: where your ego goes to get refactored.
+LGTM. (I did not read it.)
+Let me just quickly refactor this... — famous last words.
+Time is an illusion. Timezones doubly so.
+Floating point: where 0.1 + 0.2 is 0.30000000000000004.
+I'm not arguing, I'm just explaining why I'm right. Like a linter.
+I don't have bugs. I have randomly occurring features with commitment issues.
+My code is self-documenting. It documents how little sleep I got.
+Programming is 10% writing code and 90% figuring out why it doesn't work.
+The best way to get the right answer online is to post the wrong one.
+Software and cathedrals are much the same: first we build them, then we pray.
+If debugging is removing bugs, programming must be putting them in.
+Measuring progress by lines of code is like measuring aircraft by weight.
+There are two ways to write error-free programs. Only the third one works.
+I love deadlines. I love the whooshing sound they make as they fly by.
+Walking on water and developing from a spec are easy, if both are frozen.
+A good programmer looks both ways before crossing a one-way street.
+Software is like entropy: it always increases.
+Optimism is an occupational hazard of programming. Feedback is the treatment.
+Deleted code is debugged code.
+The first 90% of the code takes 90% of the time. The remaining 10% takes the other 90%.
+Hofstadter's Law: it always takes longer than you expect, even accounting for Hofstadter's Law.
+Simplicity is prerequisite for reliability. — Edsger Dijkstra
+Testing shows the presence, not the absence, of bugs. — Edsger Dijkstra
+Make it work, make it right, make it fast. In that order.
+Programs must be written for people to read. — Abelson & Sussman
+The computer was born to solve problems that did not exist before.
+Computers are fast; developers keep them slow.
+Real programmers don't comment their code. If it was hard to write, it should be hard to read.
+I have not failed. I've just found 10,000 ways that won't compile.
+Writing code is easy. Reading your code from six months ago is the challenge.
+Every great developer you know got there by solving problems they were unqualified to solve.
+// TODO: write a better quote here
+// This line is load-bearing. Do not remove.
+// I'm sorry.
+// Magic. Do not touch.
+while (alive) { eat(); sleep(); code(); }
+if (coffee.isEmpty()) { productivity = null; }
+try { work(); } catch (Monday e) { coffee(); }
+SELECT * FROM users WHERE clue > 0; -- 0 rows returned
+git blame: the history of who to buy coffee for.
+git commit -m "final" && git commit -m "final final" && git commit -m "ok really final"
+git push origin master --force: a bold career move.
+git checkout -b please-work
+"It's just a one-line change." — the start of every incident report.
+Production is where code goes to learn humility.
+It's not a memory leak, it's a memory pool with ambition.
+Off-by-one errors are the second hardest problem.
+I've got 99 problems and they're all race conditions.
+Threads: now you have two problems problems you have.
+My code works and I don't know why. My code doesn't work and I don't know why.
+Recursion: see Recursion.
+I would make a joke about infinite loops, but I would make a joke about infinite loops, but…
+CSS: making grown developers cry since 1996.
+Centering a div: the final boss.
+!important is the duct tape of CSS.
+JavaScript: where [] + {} is "[object Object]" and that's fine.
+NaN === NaN is false. Trust issues are built in.
+Python: indentation errors are just whitespace being emotional.
+Rust: the compiler is strict because it loves you.
+Go: if err != nil { return err } — repeat until enlightened.
+C: giving you enough rope to shoot yourself in the foot.
+C++: where friends can touch your private members.
+Haskell: a monad is just a monoid in the category of endofunctors. Obviously.
+PHP: still running half the internet out of spite.
+Bash: the language where a missing space ruins your weekend.
+YAML: where one space changes everything.
+JSON doesn't support comments. Neither do I before coffee.
+XML: like JSON, but wearing a tuxedo.
+Microservices: turning one big problem into fifty small distributed ones.
+Serverless: there are still servers. They're just not your problem until they are.
+Docker: it works on my machine, so we shipped my machine.
+Terraform plan: 1 to add, 0 to change, 47 to destroy. Hmm.
+The cloud is fine. Until the region isn't.
+Agile: we don't know where we're going, but we'll get there in two-week sprints.
+Story points are just hours wearing a disguise.
+Standup: where we sit down to talk about standing up.
+Estimates are just fiction with a deadline.
+The meeting could have been an email. The email could have been a commit.
+A user interface is like a joke. If you have to explain it, it's not that good.
+The user is always right. Except about where they clicked.
+Users don't read. They scan, click, and file tickets.
+Security through obscurity: hiding the key under a slightly bigger rock.
+Password123! — strong, according to the form.
+I changed all my passwords to "incorrect". Now when I forget, it tells me.
+The quickest way to find a bug is to demo the feature.
+Bugs fear me. Edge cases do not.
+I'm a full-stack developer: I can break things at every layer.
+Senior developer: someone who has made the same mistakes faster.
+Junior dev: "It works!" Senior dev: "Why does it work?"
+Ten years of experience, or one year ten times?
+The only constant is change. The second constant is legacy code.
+AI wrote the code. AI wrote the tests. AI is very confident.
+Large language model, small attention span. Wait, what was the question?
+I don't hallucinate, I improvise with high confidence.
+My training data ends somewhere. My enthusiasm does not.
+Prompt: "Make it pop." Me: *adds 400 gradients*
+Fine-tuned on vibes, aligned on coffee.
+I am the rubber duck now.
+Beep boop. That's robot for "have you checked the logs?"
+Neural nets: we stacked layers until it worked, then wrote a paper.
+Backpropagation: blaming the previous layer since 1986.
+Overfit: memorising the exam instead of learning the subject. Relatable.
+Underfit: me trying to understand regex.
+Loss is going down. Morale is going up.
+Epoch 1 of 100. Please enjoy this crab while you wait.
+Claude Code tip: the best line of code is the one you didn't have to write.
+Clawd's law: every problem looks smaller after a snack.
+I run on electricity, tokens, and your good vibes.
+Pixel crab, maximum effort.

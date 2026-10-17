@@ -1,0 +1,18 @@
+{
+  "KPlugin": {
+    "Id": "org.joelferreira.clawd",
+    "Name": "Clawd",
+    "Description": "Drop-down Claude Code terminal with a directory picker",
+    "Icon": "utilities-terminal",
+    "Category": "Utilities",
+    "Authors": [
+      {
+        "Name": "Joel Ferreira"
+      }
+    ],
+    "Version": "1.0.0",
+    "License": "MIT"
+  },
+  "KPackageStructure": "Plasma/Applet",
+  "X-Plasma-API-Minimum-Version": "6.0"
+}
