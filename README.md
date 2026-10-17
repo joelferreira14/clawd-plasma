@@ -4,7 +4,7 @@ A [Claude Code](https://claude.com/claude-code) companion for KDE Plasma 6.
 
 - **Panel widget**: a pixel-art Clawd that blinks every 10 seconds and runs while Claude is working.
 - **Drop-down terminal**: click Clawd (or press ``Meta+` ``) to open a kitty window with a directory picker that starts `claude` or `claude --resume` where you choose.
-- **Animated header**: Clawd plays 21 animations next to 200+ geeky quotes about coding, AI and tech.
+- **Animated header**: Clawd plays 21 animations next to 200+ geeky quotes about coding, AI and tech. See [all of Clawd's moves](docs/ANIMATIONS.md).
 
 ![Directory picker with the animated Clawd header](docs/screenshots/picker.png)
 
