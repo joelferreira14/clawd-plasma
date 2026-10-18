@@ -5,10 +5,12 @@ Keys:  Up/Down move  ->  expand / enter  <-  collapse / back
        Enter  claude --resume      Ctrl+Enter  claude (new session)
        .  toggle hidden dirs       Esc  hide the drop-down
 """
+import json
 import os
 import random
 import re
 import select
+import shlex
 import shutil
 import signal
 import subprocess
@@ -21,6 +23,8 @@ STATE_DIR = os.path.join(os.environ.get("XDG_STATE_HOME", os.path.join(HOME, ".l
 RECENT_FILE = os.path.join(STATE_DIR, "recent")
 PROJECTS_DIR = os.path.join(HOME, ".claude/projects")
 TOGGLE = os.path.join(os.path.dirname(os.path.realpath(__file__)), "clawd-toggle")
+STATUSLINE = os.path.join(os.path.dirname(os.path.realpath(__file__)), "clawd-statusline")
+OPEN_URL = os.path.join(os.path.dirname(os.path.realpath(__file__)), "clawd-open-url")
 MAX_RECENT = 5
 
 ORANGE = "\x1b[38;2;217;119;87m"
@@ -690,15 +694,29 @@ def read_keys(fd, timeout):
     return [KEYS.get(k, k) for k in KEY_RE.findall(data)]
 
 
+def statusline():
+    """(settings JSON, env) for claude: the window buttons stay in its status line,
+    above the user's own status line, which clawd-statusline runs from the env.
+    Ctrl+click on a button opens its link with $BROWSER, so clawd-open-url."""
+    try:
+        with open(os.path.join(HOME, ".claude/settings.json")) as f:
+            user = json.load(f).get("statusLine") or {}
+    except (OSError, ValueError, AttributeError):
+        user = {}
+    settings = {"statusLine": {**user, "type": "command", "command": shlex.quote(STATUSLINE), "refreshInterval": 1}}
+    return json.dumps(settings), {**os.environ, "CLAWD_STATUSLINE": user.get("command", ""), "BROWSER": OPEN_URL}
+
+
 def run_claude(path, args):
     save_recent(path)
     claude = shutil.which("claude") or os.path.join(HOME, ".local/bin/claude")
+    settings, env = statusline()
     sys.stdout.write("\x1b[H\x1b[2J")
     sys.stdout.flush()
     # Let claude own Ctrl+C while it runs; the picker ignores it meanwhile.
     old = signal.signal(signal.SIGINT, signal.SIG_IGN)
     try:
-        subprocess.run([claude, *args], cwd=path, preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_DFL))
+        subprocess.run([claude, "--settings", settings, *args], cwd=path, env=env, preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_DFL))
     finally:
         signal.signal(signal.SIGINT, old)
 

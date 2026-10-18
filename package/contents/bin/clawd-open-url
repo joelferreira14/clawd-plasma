@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# $BROWSER for Claude and open_url_with for kitty in the Clawd window.
+# https://clawd.invalid/<action> links (the window buttons in the Claude status
+# line) run clawd-window; other URLs open as usual.
+here=$(dirname "$(readlink -f "$0")")
+case $1 in
+    https://clawd.invalid/pin | https://clawd.invalid/position | https://clawd.invalid/size)
+        exec "$here/clawd-window" "${1#https://clawd.invalid/}" ;;
+    *) exec xdg-open "$@" ;;
+esac

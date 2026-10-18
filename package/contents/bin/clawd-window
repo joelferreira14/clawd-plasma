@@ -2,7 +2,8 @@
 # Window state for the Clawd window: pinned, position and size.
 # The KWin script (kwin/contents/code/main.js) does the placing; this script
 # owns the saved state and pushes it there through keyless KWin shortcuts.
-# Usage: clawd-window pin|position|size   toggle/cycle, save and push
+# Usage: clawd-window pin|position|size [value]
+#                                         set (or toggle/cycle), save and push
 #        clawd-window sync                push the saved state (e.g. after a KWin restart)
 #        clawd-window state               print "pinned position size"
 # Position: 0 center, 1 left, 2 right. Size: 0 S, 1 M, 2 L.
@@ -23,17 +24,22 @@ invoke() {
         org.kde.kglobalaccel.Component.invokeShortcut "$1" >/dev/null 2>&1
 }
 
+usage() { echo "usage: clawd-window pin|position|size [value] | sync | state" >&2; exit 2; }
+
+value=${2:-}
+[[ -z $value || $value =~ ^[0-9]$ ]] || usage
+
 on_off() { (( $1 )) && echo On || echo Off; }
 
 case ${1:-} in
-    pin) pinned=$(( !pinned )); save; invoke "Clawd Pin $(on_off "$pinned")" ;;
-    position) position=$(( (position + 1) % 3 )); save; invoke "Clawd Position $position" ;;
-    size) size=$(( (size + 1) % 3 )); save; invoke "Clawd Size $size" ;;
+    pin) pinned=$(( ${value:-!pinned} ? 1 : 0 )); save; invoke "Clawd Pin $(on_off "$pinned")" ;;
+    position) position=$(( (${value:-position + 1}) % 3 )); save; invoke "Clawd Position $position" ;;
+    size) size=$(( (${value:-size + 1}) % 3 )); save; invoke "Clawd Size $size" ;;
     sync)
         invoke "Clawd Pin $(on_off "$pinned")"
         invoke "Clawd Position $position"
         invoke "Clawd Size $size"
         ;;
     state) echo "$pinned $position $size" ;;
-    *) echo "usage: clawd-window pin|position|size|sync|state" >&2; exit 2 ;;
+    *) usage ;;
 esac

@@ -53,7 +53,7 @@ The five most recent directories are listed at the top. `●` marks directories 
 
 ### Window buttons
 
-The buttons sit above the picker. Hover over one to see what it does. The shortcuts also work while `claude` is running.
+The buttons sit above the picker. Hover over one to see what it does. While `claude` is running, the same buttons sit at the top of its status line, above your own status line: Ctrl+click them (Claude opens links only on Ctrl+click). The shortcuts work in both.
 
 ![Hovering a window button shows its tooltip](docs/screenshots/tooltip.png)
 
@@ -63,7 +63,7 @@ The buttons sit above the picker. Hover over one to see what it does. The shortc
 | `▣ Center` / `◧ Left` / `◨ Right` | `Ctrl+Alt+D` | Drop-down under the top panel, or a full-height side panel |
 | `⤢ Size` | `Ctrl+Alt+S` | Cycle Small / Medium / Large (side panels change width only) |
 
-The settings are saved in `~/.local/state/clawd/window`.
+You can also set them in right-click Clawd → *Configure Clawd…* → *Window*. The settings are saved in `~/.local/state/clawd/window`.
 
 ### Shortcut
 
@@ -87,6 +87,7 @@ Re-run `./install.sh` after editing. Use `kscreen-doctor -o` to list your monito
 | `clawd-picker` | Directory picker and animated header (Python, runs inside kitty) |
 | `clawd-toggle` | Starts the kitty window (`--class clawd`), or asks KWin to show or hide it |
 | `clawd-window` | Saves pin/position/size and pushes them to KWin through keyless shortcuts |
+| `clawd-statusline` / `clawd-open-url` | The window buttons in Claude's status line (added with `--settings`, only in the Clawd window), as `https://clawd.invalid/…` links that Claude opens with `$BROWSER`, set to `clawd-open-url` |
 | `clawd-hook` / `clawd-status` | Claude Code hooks write each session's state to `~/.cache/clawd/`; the widget polls it to know when to run |
 | `kwin/` | KWin script that places the window, keeps it above, and hides it on focus loss |
 

@@ -17,6 +17,8 @@ exec kitty --detach --class clawd --title Claude \
     -o window_padding_width=8 \
     -o confirm_os_window_close=0 \
     -o remember_window_size=no \
+    -o "open_url_with=$here/clawd-open-url" \
+    -o url_style=none \
     -o "map=ctrl+alt+p $bg pin" \
     -o "map=ctrl+alt+d $bg position" \
     -o "map=ctrl+alt+s $bg size" \

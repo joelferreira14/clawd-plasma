@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Claude Code status line for sessions in the Clawd window: the window buttons,
+# then the user's own status line, whose command clawd-picker passes in
+# CLAWD_STATUSLINE. The buttons are https://clawd.invalid/<action> links, as
+# Claude only opens http(s) links: Ctrl+click hands them to $BROWSER, which
+# clawd-picker sets to clawd-open-url.
+here=$(dirname "$(readlink -f "$0")")
+input=$(cat)
+
+orange=$'\e[38;2;217;119;87m' dim=$'\e[2m' rev=$'\e[7m' reset=$'\e[0m'
+positions=("▣ Center" "◧ Left" "◨ Right")
+sizes=(S M L)
+
+read -r pinned position size < <("$here/clawd-window" state)
+
+button() {  # action label active
+    local link=$'\e]8;;https://clawd.invalid/'"$1"$'\e\\' text=" $2 " end=$'\e]8;;\e\\'
+    if (( $3 )); then
+        printf '%s' "$link$orange[$rev$text$reset$orange]$reset$end "
+    else
+        printf '%s' "$link$dim[$reset$text$dim]$reset$end "
+    fi
+}
+
+button pin "⊙ Pin" "$pinned"
+button position "${positions[position % 3]}" 0
+button size "⤢ Size ${sizes[size % 3]}" 0
+echo
+
+[[ -n ${CLAWD_STATUSLINE:-} ]] && bash -c "$CLAWD_STATUSLINE" <<< "$input"
+exit 0
