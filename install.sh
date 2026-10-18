@@ -13,6 +13,11 @@ else
     kpackagetool6 -t Plasma/Applet -i "$repo/package"
 fi
 
+# Icon for the widget list (the theme lookup does not see icons inside the package).
+icons="$HOME/.local/share/icons/hicolor"
+install -Dm644 "$repo/package/contents/icons/$id.svg" "$icons/scalable/apps/$id.svg"
+touch "$icons"
+
 # KWin script: places, shows and hides the Clawd window.
 if kpackagetool6 -t KWin/Script -s clawd >/dev/null 2>&1; then
     kpackagetool6 -t KWin/Script -u "$repo/kwin"

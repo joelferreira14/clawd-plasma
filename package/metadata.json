@@ -3,7 +3,7 @@
     "Id": "org.joelferreira.clawd",
     "Name": "Clawd",
     "Description": "Drop-down Claude Code terminal with a directory picker",
-    "Icon": "utilities-terminal",
+    "Icon": "org.joelferreira.clawd",
     "Category": "Utilities",
     "Authors": [
       {

@@ -95,6 +95,7 @@ Re-run `./install.sh` after editing. Use `kscreen-doctor -o` to list your monito
 
 ```sh
 kpackagetool6 -t Plasma/Applet -r org.joelferreira.clawd
+rm ~/.local/share/icons/hicolor/scalable/apps/org.joelferreira.clawd.svg
 kpackagetool6 -t KWin/Script -r clawd
 kwriteconfig6 --file kwinrc --group Plugins --key clawdEnabled false
 qdbus6 org.kde.KWin /KWin reconfigure
