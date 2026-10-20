@@ -1,6 +1,6 @@
 # Clawd's moves
 
-Every animation in clawd-plasma. The GIFs are rendered from the same frames the widget plays.
+Every animation in clawd-companion. The GIFs are rendered from the same frames the widget plays.
 
 ## Panel widget
 

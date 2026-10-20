@@ -1,13 +1,31 @@
 #!/usr/bin/env bash
-# Window state for the Clawd window: pinned, position and size.
-# The KWin script (kwin/contents/code/main.js) does the placing; this script
-# owns the saved state and pushes it there through keyless KWin shortcuts.
+# Window state for the Clawd window.
+# On Plasma: pinned, position and size. The KWin script (kwin/contents/code/main.js)
+# does the placing; this script owns the saved state and pushes it there through
+# keyless KWin shortcuts.
+# On Hyprland: clawd-sidebar owns the window and its state.
 # Usage: clawd-window pin|position|size [value]
 #                                         set (or toggle/cycle), save and push
 #        clawd-window sync                push the saved state (e.g. after a KWin restart)
-#        clawd-window state               print "pinned position size"
+#        clawd-window state               Plasma: print "pinned position size"
+#        clawd-window buttons             the window buttons (none on Hyprland), one per line:
+#                                         "action<TAB>active<TAB>label<TAB>tooltip<TAB>shortcut"
 # Position: 0 center, 1 left, 2 right. Size: 0 S, 1 M, 2 L.
 set -u
+
+here=$(dirname "$(readlink -f "$0")")
+
+usage() { echo "usage: clawd-window pin|position|size [value] | sync | state | buttons" >&2; exit 2; }
+
+button() {  # action active label tooltip shortcut
+    printf '%s\t%s\t%s\t%s\t%s\n' "$@"
+}
+
+# On Hyprland clawd-sidebar owns the window and the bar draws its buttons: none here.
+if [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
+    [[ ${1:-} == buttons ]] && exit 0
+    usage
+fi
 
 state_file="${XDG_STATE_HOME:-$HOME/.local/state}/clawd/window"
 
@@ -24,8 +42,6 @@ invoke() {
         org.kde.kglobalaccel.Component.invokeShortcut "$1" >/dev/null 2>&1
 }
 
-usage() { echo "usage: clawd-window pin|position|size [value] | sync | state" >&2; exit 2; }
-
 value=${2:-}
 [[ -z $value || $value =~ ^[0-9]$ ]] || usage
 
@@ -41,5 +57,12 @@ case ${1:-} in
         invoke "Clawd Size $size"
         ;;
     state) echo "$pinned $position $size" ;;
+    buttons)
+        positions=("▣ Center" "◧ Left" "◨ Right")
+        sizes=(S M L)
+        button pin "$pinned" "⊙ Pin" "Keep open when it loses focus" "Ctrl+Alt+P"
+        button position 0 "${positions[position % 3]}" "Cycle Center / Left / Right" "Ctrl+Alt+D"
+        button size 0 "⤢ Size ${sizes[size % 3]}" "Cycle Small / Medium / Large" "Ctrl+Alt+S"
+        ;;
     *) usage ;;
 esac

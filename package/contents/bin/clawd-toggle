@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # Shows or hides the Clawd window, starting it if needed. Placement, focus-loss
-# hiding and the show/hide itself are done by the Clawd KWin script.
+# hiding and the show/hide itself are done by the Clawd KWin script, or on
+# Hyprland by clawd-sidebar.
 here=$(dirname "$(readlink -f "$0")")
 export PATH="$HOME/.local/bin:$PATH"
+
+[[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] && exec "$here/clawd-sidebar" toggle
 
 "$here/clawd-window" sync
 

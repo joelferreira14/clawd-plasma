@@ -116,23 +116,22 @@ SPRITE_COLS = 22
 QUOTES_FILE = os.path.join(os.path.dirname(os.path.realpath(__file__)), "quotes.txt")
 QUOTE_STYLE = "\x1b[3m"
 WINDOW = os.path.join(os.path.dirname(os.path.realpath(__file__)), "clawd-window")
-SIZE_NAMES = "SML"
-POSITION_NAMES = ["Center", "Left", "Right"]
-POSITION_ICONS = "▣◧◨"
-TOOLTIPS = {
-    "pin": ("Keep open when it loses focus", "Ctrl+Alt+P"),
-    "position": ("Cycle Center / Left / Right", "Ctrl+Alt+D"),
-    "size": ("Cycle Small / Medium / Large", "Ctrl+Alt+S"),
-}
 
 
-def window_state():
-    """(pinned, position index, size index) as stored by clawd-window."""
+def window_buttons():
+    """[(action, active, label, tooltip, shortcut)] as listed by clawd-window,
+    which knows the window manager. Empty on Hyprland, where the bar draws them."""
     try:
-        out = subprocess.run([WINDOW, "state"], capture_output=True, text=True).stdout.split()
-        return bool(int(out[0])), int(out[1]) % 3, int(out[2]) % 3
-    except (OSError, ValueError, IndexError):
-        return False, 0, 1
+        out = subprocess.run([WINDOW, "buttons"], capture_output=True, text=True).stdout
+    except OSError:
+        return []
+    buttons = []
+    for line in out.splitlines():
+        fields = line.split("\t")
+        if len(fields) == 5:
+            action, active, label, tooltip, shortcut = fields
+            buttons.append((action, active == "1", label, tooltip, shortcut))
+    return buttons
 
 
 MOUSE_RE = re.compile(r"\x1b\[<(\d+);(\d+);(\d+)M")
@@ -322,7 +321,7 @@ class Header:
         self.buttons = []
         self.hover = None
         self.ticks = 0
-        self.window = window_state()
+        self.window = window_buttons()
         self.next_quote()
 
     def next_quote(self):
@@ -335,7 +334,7 @@ class Header:
     def tick(self):
         self.ticks += 1
         if self.ticks % 10 == 0:
-            self.window = window_state()
+            self.window = window_buttons()
         if self.typed < len(self.quote):
             self.typed += 2
         else:
@@ -358,15 +357,9 @@ class Header:
 
     def render_buttons(self):
         """Clickable window buttons; records their 1-based column ranges."""
-        pinned, position, size = self.window
-        specs = [
-            ("pin", "⊙ Pin", pinned),
-            ("position", f"{POSITION_ICONS[position]} {POSITION_NAMES[position]}", False),
-            ("size", f"⤢ Size {SIZE_NAMES[size]}", False),
-        ]
         col = SPRITE_COLS + 1
         out, self.buttons = "", []
-        for action, label, active in specs:
+        for action, active, label, *_ in self.window:
             text = f" {label} "
             if active:
                 out += f"{ORANGE}[{REV}{text}{RESET}{ORANGE}]{RESET} "
@@ -380,9 +373,10 @@ class Header:
     def tooltip(self, cols):
         """Hovered button's tooltip as a box drawn over the rows below it."""
         button = next((b for b in self.buttons if b[2] == self.hover), None)
-        if not button:
+        spec = next((w for w in self.window if w[0] == self.hover), None)
+        if not button or not spec:
             return ""
-        lines = TOOLTIPS[self.hover]
+        lines = spec[3:]
         width = min(max(map(len, lines)) + 4, cols)
         inner = width - 4
         col = max(1, min(button[0], cols - width + 1))
@@ -431,7 +425,7 @@ class Header:
 
 def window_action(header, action):
     subprocess.run([WINDOW, action], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    header.window = window_state()
+    header.window = window_buttons()
 
 
 class Gallery:
@@ -679,6 +673,22 @@ READING = False
 # One key per match: escape sequences (CSI incl. SGR mouse, SS3), a lone ESC,
 # or a single character. Held keys and fast typing arrive batched in one read.
 KEY_RE = re.compile(r"\x1b\[[0-9;?<>]*[A-Za-z~]|\x1bO.|\x1b|.", re.S)
+# CSI keys with a modifier: "\x1b[1;129B" is Down with Num Lock on.
+MODIFIED_RE = re.compile(r"\x1b\[(\d*);(\d+)([A-Za-z~])")
+LOCKS = 64 | 128  # Caps Lock, Num Lock
+
+
+def normalize(key):
+    """Drops the Caps/Num Lock bits the kitty keyboard protocol adds to the
+    modifiers, so Down with Num Lock on is still "\x1b[B"."""
+    m = MODIFIED_RE.fullmatch(key)
+    if not m:
+        return key
+    num, mods, final = m.groups()
+    mods = (int(mods) - 1) & ~LOCKS
+    if mods:
+        return f"\x1b[{num};{mods + 1}{final}"
+    return f"\x1b[{final}" if num == "1" and final.isupper() else f"\x1b[{num}{final}"
 
 
 def read_keys(fd, timeout):
@@ -691,32 +701,35 @@ def read_keys(fd, timeout):
         data = os.read(fd, 4096).decode(errors="ignore")
     finally:
         READING = False
-    return [KEYS.get(k, k) for k in KEY_RE.findall(data)]
+    return [KEYS.get(k, k) for k in map(normalize, KEY_RE.findall(data))]
 
 
 def statusline():
-    """(settings JSON, env) for claude: the window buttons stay in its status line,
+    """(extra claude args, env) for claude: the window buttons stay in its status line,
     above the user's own status line, which clawd-statusline runs from the env.
-    Ctrl+click on a button opens its link with $BROWSER, so clawd-open-url."""
+    Ctrl+click on a button opens its link with $BROWSER, so clawd-open-url.
+    No buttons (the window manager draws its own): claude runs as usual."""
+    if not window_buttons():
+        return [], os.environ
     try:
         with open(os.path.join(HOME, ".claude/settings.json")) as f:
             user = json.load(f).get("statusLine") or {}
     except (OSError, ValueError, AttributeError):
         user = {}
     settings = {"statusLine": {**user, "type": "command", "command": shlex.quote(STATUSLINE), "refreshInterval": 1}}
-    return json.dumps(settings), {**os.environ, "CLAWD_STATUSLINE": user.get("command", ""), "BROWSER": OPEN_URL}
+    return ["--settings", json.dumps(settings)], {**os.environ, "CLAWD_STATUSLINE": user.get("command", ""), "BROWSER": OPEN_URL}
 
 
 def run_claude(path, args):
     save_recent(path)
     claude = shutil.which("claude") or os.path.join(HOME, ".local/bin/claude")
-    settings, env = statusline()
+    extra, env = statusline()
     sys.stdout.write("\x1b[H\x1b[2J")
     sys.stdout.flush()
     # Let claude own Ctrl+C while it runs; the picker ignores it meanwhile.
     old = signal.signal(signal.SIGINT, signal.SIG_IGN)
     try:
-        subprocess.run([claude, "--settings", settings, *args], cwd=path, env=env, preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_DFL))
+        subprocess.run([claude, *extra, *args], cwd=path, env=env, preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_DFL))
     finally:
         signal.signal(signal.SIGINT, old)
 

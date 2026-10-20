@@ -8,23 +8,15 @@ here=$(dirname "$(readlink -f "$0")")
 input=$(cat)
 
 orange=$'\e[38;2;217;119;87m' dim=$'\e[2m' rev=$'\e[7m' reset=$'\e[0m'
-positions=("▣ Center" "◧ Left" "◨ Right")
-sizes=(S M L)
 
-read -r pinned position size < <("$here/clawd-window" state)
-
-button() {  # action label active
-    local link=$'\e]8;;https://clawd.invalid/'"$1"$'\e\\' text=" $2 " end=$'\e]8;;\e\\'
-    if (( $3 )); then
+while IFS=$'\t' read -r action active label _; do
+    link=$'\e]8;;https://clawd.invalid/'"$action"$'\e\\' text=" $label " end=$'\e]8;;\e\\'
+    if (( active )); then
         printf '%s' "$link$orange[$rev$text$reset$orange]$reset$end "
     else
         printf '%s' "$link$dim[$reset$text$dim]$reset$end "
     fi
-}
-
-button pin "⊙ Pin" "$pinned"
-button position "${positions[position % 3]}" 0
-button size "⤢ Size ${sizes[size % 3]}" 0
+done < <("$here/clawd-window" buttons)
 echo
 
 [[ -n ${CLAWD_STATUSLINE:-} ]] && bash -c "$CLAWD_STATUSLINE" <<< "$input"

@@ -1,6 +1,6 @@
-# clawd-plasma
+# clawd-companion
 
-A [Claude Code](https://claude.com/claude-code) companion for KDE Plasma 6.
+A [Claude Code](https://claude.com/claude-code) companion for KDE Plasma 6, with a [Hyprland](#hyprland) variant.
 
 - **Panel widget**: a pixel-art Clawd that blinks every 10 seconds and runs while Claude is working.
 - **Drop-down terminal**: click Clawd (or press ``Meta+` ``) to open a kitty window with a directory picker that starts `claude` or `claude --resume` where you choose.
@@ -22,8 +22,8 @@ A [Claude Code](https://claude.com/claude-code) companion for KDE Plasma 6.
 ## Install
 
 ```sh
-git clone https://github.com/joelferreira14/clawd-plasma.git
-cd clawd-plasma
+git clone https://github.com/joelferreira14/clawd-companion.git
+cd clawd-companion
 ./install.sh
 ```
 
@@ -90,6 +90,35 @@ Re-run `./install.sh` after editing. Use `kscreen-doctor -o` to list your monito
 | `clawd-statusline` / `clawd-open-url` | The window buttons in Claude's status line (added with `--settings`, only in the Clawd window), as `https://clawd.invalid/…` links that Claude opens with `$BROWSER`, set to `clawd-open-url` |
 | `clawd-hook` / `clawd-status` | Claude Code hooks write each session's state to `~/.cache/clawd/`; the widget polls it to know when to run |
 | `kwin/` | KWin script that places the window, keeps it above, and hides it on focus loss |
+
+## Hyprland
+
+On Hyprland (0.56+, Lua config) the same picker runs in a kitty window docked on the left like a sidebar, on the right, or centred under the bar. There is no panel widget.
+
+```sh
+./install.sh            # or ./install.sh hyprland
+```
+
+This copies the scripts to `~/.local/share/clawd/bin` and registers the same Claude Code hooks as on Plasma, so `~/.local/share/clawd/bin/clawd-status` prints `working` while any Claude session works, in this window or any other terminal. A bar can poll it to run its own Clawd. Then load [`hyprland/rules.lua`](hyprland/rules.lua) and [`hyprland/keybinds.lua`](hyprland/keybinds.lua) from your config, or copy them in.
+
+The picker and Claude's status line show no window buttons here: your bar can draw its own from `window.json` (below). The shortcuts:
+
+| Shortcut | Action |
+|---|---|
+| `Super+O` | Show or hide the window |
+| `Super+Alt+O` | Cycle Small (30%) / Medium (50%) / Max width |
+| `Super+Alt+C` | Cycle Left / Center / Right: full height on either edge, or a drop-down centred under the bar |
+| `Super+Alt+P` | Pin: keep it on every workspace and reserve its width (left or right), so tiled windows make room |
+| `Super+Alt+D` | Turn it into a regular tiled window, or dock it back |
+
+A left click outside the docked window hides it. `Esc` in the picker hides it too.
+
+| Part | Role |
+|---|---|
+| `clawd-sidebar` | Starts the window (`--class claude-sidebar`), shows, hides, sizes, places, pins and detaches it through `hyprctl dispatch` |
+| `~/.local/state/claude-sidebar/window.json` | Mode, size, position and geometry, for a bar that draws the window buttons |
+
+The window title is left to Claude Code (`◐`/`◑` while it works, `✳` when idle), so a bar can watch it. The kitty window keeps a 32 px top padding for buttons a bar may draw over it; change `PADDING` in `hyprland/clawd-sidebar` if yours does not.
 
 ## Uninstall
 

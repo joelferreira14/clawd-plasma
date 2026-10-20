@@ -1,0 +1,327 @@
+#!/usr/bin/env bash
+# Clawd on Hyprland: the kitty window with clawd-picker, docked on the left
+# like a sidebar (or on the right, or centred under the bar).
+#
+# Usage: clawd-sidebar [toggle|expand|position|pin|detach|sync]
+#   toggle    show/hide, keeping size and mode (Super+O, Esc in the picker)
+#   expand    cycle the size: small -> medium -> max -> small (Super+Alt+O)
+#   position  cycle left -> center -> right -> left (Super+Alt+C)
+#   pin       keep it on every workspace and reserve its width (Super+Alt+P)
+#   detach    turn it into a regular tiled window, or dock it back (Super+Alt+D, Super+Alt+A)
+#   sync      only bring the saved state in line with the window (no visible change)
+#
+# Modes:
+#   docked    floating in special:claude (see hyprland/rules.lua); shown/hidden
+#             by toggling the special workspace
+#   pinned    floating and pinned on the current workspace; on the left or right
+#             its width is reserved by widening that side of general:gaps_out, so
+#             tiled windows make room (centred, it just floats over them)
+#             (a layer exclusive zone would also push the bar); hidden = parked
+#             in special:claude
+#   detached  regular tiled window
+# Positions:
+#   left/right  full height on that edge; the size sets the width
+#   center      drop-down centred under the bar; the size sets width and height
+# The state is written to $STATE_FILE for a bar that draws the window buttons.
+
+here=$(dirname "$(readlink -f "$0")")
+export PATH="$HOME/.local/bin:$PATH"
+
+CLASS="claude-sidebar"
+SPECIAL="claude"
+WINDOW="class:^($CLASS)\$"
+# Top padding leaves room for buttons a bar may draw over the window's top
+# right corner (e.g. a quickshell overlay); "8" without one.
+PADDING="32 4 4 4"
+SMALL_RATIO="0.30"    # keep in sync with the size rule in hyprland/rules.lua
+MEDIUM_RATIO="0.50"
+# centred: [width, height] ratios of the monitor area per size (max: all of it)
+CENTER_SMALL="0.45 0.40"
+CENTER_MEDIUM="0.65 0.60"
+# max: full monitor width minus the gaps
+GAP=5
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/claude-sidebar"
+STATE_FILE="$STATE_DIR/window.json"
+GAPS_FILE="$STATE_DIR/gaps-out" # gaps_out before reserving, "top right bottom left"
+
+mkdir -p "$STATE_DIR"
+
+# One run at a time: overlapping runs (double click, key repeat) read the same
+# saved state and leave it out of step with the window.
+exec 9>"$STATE_DIR/lock"
+flock -w 5 9 || exit 1
+mode=$(jq -r '.mode // "docked"' "$STATE_FILE" 2>/dev/null)
+size=$(jq -r '.size // "small"' "$STATE_FILE" 2>/dev/null)
+position=$(jq -r '.position // "left"' "$STATE_FILE" 2>/dev/null)
+case "$position" in
+    left | center | right) ;;
+    *) position=left ;;
+esac
+[ -n "$mode" ] || mode=docked
+case "$size" in
+    small | medium | max) ;;
+    expanded) size=medium ;; # names used before the third size existed
+    *) size=small ;;
+esac
+
+monitor=$(hyprctl monitors -j | jq -c '.[] | select(.focused)')
+mon_w=$(jq -r '.width / .scale | floor' <<<"$monitor")
+mon_h=$(jq -r '.height / .scale | floor' <<<"$monitor")
+mon_x=$(jq -r '.x' <<<"$monitor")
+mon_y=$(jq -r '.y' <<<"$monitor")
+mon_ws=$(jq -r '.activeWorkspace.id' <<<"$monitor")
+top=$(jq -r '.reserved[1]' <<<"$monitor") # reserved is [left, top, right, bottom]
+area_h=$((mon_h - top - 2 * GAP)) # full height below the bar
+
+dispatch() {
+    hyprctl dispatch "$1" >/dev/null
+}
+
+client() {
+    hyprctl clients -j | jq -c --arg c "$CLASS" '[.[] | select(.class == $c)][0] // empty'
+}
+
+special_shown() {
+    [ "$(hyprctl monitors -j | jq -r '.[] | select(.focused) | .specialWorkspace.name')" = "special:$SPECIAL" ]
+}
+
+# Ratio of the monitor for this size and position: "<width> <height>".
+ratios() {
+    case "$position:$size" in
+        *:max) echo "1 1" ;;
+        center:medium) echo "$CENTER_MEDIUM" ;;
+        center:*) echo "$CENTER_SMALL" ;;
+        *:medium) echo "$MEDIUM_RATIO 1" ;;
+        *) echo "$SMALL_RATIO 1" ;;
+    esac
+}
+
+width() {
+    local w
+    read -r w _ <<<"$(ratios)"
+    [ "$w" = 1 ] && echo $((mon_w - 2 * GAP)) || jq -n "$mon_w * $w | floor"
+}
+
+height() {
+    local h
+    read -r _ h <<<"$(ratios)"
+    [ "$h" = 1 ] && echo "$area_h" || jq -n "$area_h * $h | floor"
+}
+
+window_x() {
+    case "$position" in
+        center) echo $((mon_x + (mon_w - $(width)) / 2)) ;;
+        right) echo $((mon_x + mon_w - $(width) - GAP)) ;;
+        *) echo $((mon_x + GAP)) ;;
+    esac
+}
+
+next_size() {
+    case "$size" in
+        small) size=medium ;;
+        medium) size=max ;;
+        *) size=small ;;
+    esac
+}
+
+next_position() {
+    case "$position" in
+        left) position=center ;;
+        center) position=right ;;
+        *) position=left ;;
+    esac
+}
+
+# Size and place the floating window for its position. Resize grows around the
+# window centre, so move it after; move takes global layout coordinates.
+place() {
+    dispatch "hl.dsp.window.resize({ x = $(width), y = $(height), relative = false, window = \"$WINDOW\" })"
+    dispatch "hl.dsp.window.move({ x = $(window_x), y = $((mon_y + top + GAP)), relative = false, window = \"$WINDOW\" })"
+}
+
+# Park the window in special:claude, floating and unpinned (pinned windows cannot move there).
+to_special() {
+    dispatch "hl.dsp.window.pin({ action = \"disable\", window = \"$WINDOW\" })"
+    dispatch "hl.dsp.window.float({ action = \"enable\", window = \"$WINDOW\" })"
+    dispatch "hl.dsp.window.move({ workspace = \"special:$SPECIAL\", follow = false, window = \"$WINDOW\" })"
+}
+
+to_current_workspace() {
+    special_shown && dispatch "hl.dsp.workspace.toggle_special(\"$SPECIAL\")"
+    dispatch "hl.dsp.window.move({ workspace = \"$mon_ws\", follow = false, window = \"$WINDOW\" })"
+}
+
+show_docked() {
+    place
+    special_shown || dispatch "hl.dsp.workspace.toggle_special(\"$SPECIAL\")"
+}
+
+show_pinned() {
+    to_current_workspace
+    dispatch "hl.dsp.window.float({ action = \"enable\", window = \"$WINDOW\" })"
+    place
+    dispatch "hl.dsp.window.pin({ action = \"enable\", window = \"$WINDOW\" })"
+    dispatch "hl.dsp.focus({ window = \"$WINDOW\" })"
+}
+
+show_detached() {
+    to_current_workspace
+    dispatch "hl.dsp.window.float({ action = \"disable\", window = \"$WINDOW\" })"
+    dispatch "hl.dsp.focus({ window = \"$WINDOW\" })"
+}
+
+show() {
+    case "$mode" in
+        pinned) show_pinned ;;
+        detached) show_detached ;;
+        *) show_docked ;;
+    esac
+}
+
+is_visible() {
+    local c ws
+    c=$(client)
+    [ -n "$c" ] || return 1
+    ws=$(jq -r '.workspace.name' <<<"$c")
+    case "$mode" in
+        docked) [ "$ws" = "special:$SPECIAL" ] && special_shown ;;
+        *) [ "$ws" != "special:$SPECIAL" ] ;;
+    esac
+}
+
+# hl.config is not a dispatcher, so hyprctl reports an error after applying it; ignore it.
+set_gaps_out() {
+    read -r g_top g_right g_bottom g_left <<<"$1"
+    dispatch "(function() hl.config({ general = { gaps_out = { top = $g_top, right = $g_right, bottom = $g_bottom, left = $g_left } } }) end)()"
+}
+
+reserve() {
+    local saved
+    # At max width, or centred, there is no side to reserve: let it cover the windows.
+    if [ "$size" = max ] || [ "$position" = center ]; then
+        unreserve
+        return
+    fi
+    [ -f "$GAPS_FILE" ] || hyprctl getoption general:gaps_out | sed -n 's/^css gap data: //p' >"$GAPS_FILE"
+    saved=$(cat "$GAPS_FILE")
+    read -r g_top g_right g_bottom g_left <<<"$saved"
+    if [ "$position" = right ]; then
+        set_gaps_out "$g_top $(($(width) + GAP + g_right)) $g_bottom $g_left"
+    else
+        set_gaps_out "$g_top $g_right $g_bottom $(($(width) + GAP + g_left))"
+    fi
+}
+
+unreserve() {
+    [ -f "$GAPS_FILE" ] || return
+    set_gaps_out "$(cat "$GAPS_FILE")"
+    rm -f "$GAPS_FILE"
+}
+
+write_state() {
+    local visible=false
+    sleep 0.15 # let Hyprland apply the special workspace toggle before reading it back
+    is_visible && visible=true
+    if [ "$mode" = pinned ] && [ "$visible" = true ]; then reserve; else unreserve; fi
+    # at/size: window geometry after this action, for the buttons drawn over it
+    # (HyprlandData gets no event for resizes and moves).
+    jq -n --arg mode "$mode" --arg size "$size" --arg position "$position" --argjson visible "$visible" --argjson width "$(width)" \
+        --argjson client "$(client || echo null)" \
+        '{mode: $mode, size: $size, position: $position, visible: $visible, width: $width, at: ($client.at // null), wsize: ($client.size // null)}' >"$STATE_FILE.tmp"
+    mv "$STATE_FILE.tmp" "$STATE_FILE"
+}
+
+launch() {
+    # No --title: Claude Code sets the title (◐/◑ while working), which a bar can watch.
+    kitty --class "$CLASS" --directory "$HOME" \
+        -o "window_padding_width=$PADDING" \
+        -o confirm_os_window_close=0 \
+        -o "open_url_with=$here/clawd-open-url" \
+        -o url_style=none \
+        python3 -I "$here/clawd-picker" >/dev/null 2>&1 9>&- &
+    # 9>&-: kitty must not inherit the lock fd, or it holds the lock for as long as it runs
+    for _ in $(seq 50); do
+        [ -n "$(client)" ] && break
+        sleep 0.1
+    done
+    show
+}
+
+# The saved mode can drift from the window (an interrupted or overlapping run).
+# Trust the window: pinned means pinned, tiled means detached, a floating
+# unpinned window outside special:claude is docked and goes back there.
+# A window in special:claude is docked, or a hidden pinned one: keep the saved mode.
+reconcile() {
+    local c ws
+    c=$(client)
+    [ -n "$c" ] || return
+    ws=$(jq -r '.workspace.name' <<<"$c")
+    if [ "$(jq -r '.pinned' <<<"$c")" = true ]; then
+        mode=pinned
+    elif [ "$(jq -r '.floating' <<<"$c")" = false ]; then
+        mode=detached
+    elif [ "$ws" != "special:$SPECIAL" ]; then
+        mode=docked
+        to_special
+    elif [ "$mode" = detached ]; then
+        mode=docked
+    fi
+}
+
+action=${1:-toggle}
+reconcile
+
+if [ -z "$(client)" ]; then
+    case "$action" in
+        expand) next_size ;;
+        position) next_position ;;
+        pin) [ "$mode" = pinned ] && mode=docked || mode=pinned ;;
+        detach) [ "$mode" = detached ] && mode=docked || mode=detached ;;
+    esac
+    launch
+    write_state
+    exit 0
+fi
+
+case "$action" in
+    sync) ;;
+    toggle)
+        case "$mode" in
+            docked) if special_shown; then dispatch "hl.dsp.workspace.toggle_special(\"$SPECIAL\")"; else show_docked; fi ;;
+            pinned) if is_visible; then to_special; else show_pinned; fi ;;
+            detached) show_detached ;;
+        esac
+        ;;
+    expand)
+        next_size
+        if [ "$mode" != detached ]; then
+            if is_visible; then place; else show; fi
+        fi
+        ;;
+    position)
+        next_position
+        if [ "$mode" != detached ]; then
+            if is_visible; then place; else show; fi
+        fi
+        ;;
+    pin)
+        if [ "$mode" = pinned ]; then
+            mode=docked
+            to_special
+        else
+            mode=pinned
+        fi
+        show
+        ;;
+    detach)
+        if [ "$mode" = detached ]; then
+            mode=docked
+            to_special
+        else
+            [ "$mode" = pinned ] && dispatch "hl.dsp.window.pin({ action = \"disable\", window = \"$WINDOW\" })"
+            mode=detached
+        fi
+        show
+        ;;
+esac
+write_state
